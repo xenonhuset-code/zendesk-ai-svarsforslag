@@ -1,4 +1,60 @@
+import express from "express";
+
+const app = express();
+app.use(express.json());
+
+const {
+  WEBHOOK_SECRET,
+  ZENDESK_SUBDOMAIN,
+  ZENDESK_EMAIL,
+  ZENDESK_API_TOKEN,
+  OPENAI_API_KEY,
+  OPENAI_MODEL = "gpt-4.1-mini",
+  PORT = 3000
+} = process.env;
+
+const AI_TAG = "ai_svarsforslag_skapat";
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
+function checkSecret(req) {
+  const bearerToken = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+  return bearerToken === WEBHOOK_SECRET || req.query.secret === WEBHOOK_SECRET;
+}
+
+function requireConfig() {
+  const missing = [];
+  for (const [name, value] of Object.entries({
+    WEBHOOK_SECRET,
+    ZENDESK_SUBDOMAIN,
+    ZENDESK_EMAIL,
+    ZENDESK_API_TOKEN,
+    OPENAI_API_KEY
+  })) {
+    if (!value) missing.push(name);
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Missing environment variables: ${missing.join(", ")}`);
+  }
+}
+
+function zendeskAuthHeader() {
+  const auth = Buffer.from(`${ZENDESK_EMAIL}/token:${ZENDESK_API_TOKEN}`).toString("base64");
+  return `Basic ${auth}`;
+}
+
+async function zendeskRequest(path, options = {}) {
+  const response = await fetch(`https://${ZENDESK_SUBDOMAIN}.zendesk.com${path}`, {
     ...options,
+    headers: {
+      Authorization: zendeskAuthHeader(),
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });    ...options,
     headers: {
       Authorization: zendeskAuthHeader(),
       "Content-Type": "application/json",
