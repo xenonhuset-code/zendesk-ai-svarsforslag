@@ -69,11 +69,11 @@ app.post("/zendesk/new-ticket", async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const ticket = {
-      id: req.body.ticket_id || req.body.id || req.body.ticket?.id,
-      subject: req.body.subject || req.body.ticket?.subject,
-      description: req.body.description || req.body.ticket?.description
-    };
+   const ticket = {
+  id: req.body.ticket_id || req.body.id || req.body.ticket?.id || req.body.detail?.id,
+  subject: req.body.subject || req.body.ticket?.subject || req.body.detail?.subject,
+  description: req.body.description || req.body.ticket?.description || req.body.detail?.description
+};
 
     if (!ticket.id) {
       return res.status(400).json({ error: "Missing ticket id" });
