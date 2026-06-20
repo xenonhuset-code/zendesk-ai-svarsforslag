@@ -14,11 +14,24 @@ const {
 } = process.env;
 
 /**
- * Verify the webhook signature sent by Zendesk. If a WEBHOOK_SECRET is set,
- * Zendesk will include a signature in the `X-Webhook-Signature` header. This
- * function computes the expected signature and performs a timing-safe
- * comparison with the provided signature. If no secret is set, the request
- * is trusted by default.
+ * Verify the webhook authentication from Zendesk. When a WEBHOOK_SECRET
+ * is provided there are two supported methods for authenticating an
+ * incoming request:
+ *
+ * 1. Bearer token authentication: If the request includes an
+ *    `Authorization` header of the form `Bearer <token>` and the token
+ *    matches `WEBHOOK_SECRET`, the request is accepted. This aligns with
+ *    Zendesk's webhook "bearer_token" authentication type.
+ *
+ * 2. HMAC signature verification: If the request includes an
+ *    `X-Webhook-Signature` header, the code computes an HMAC SHA256 digest of
+ *    the raw JSON payload using the secret and compares it to the provided
+ *    signature. This method works when you configure a signing secret for
+ *    a webhook via Zendesk and use the `X-Webhook-Signature` header.
+ *
+ * If no secret is set, the request is trusted by default. This function
+ * returns `true` if one of the authentication methods succeeds, and
+ * `false` otherwise.
  *
  * @param {object} req The incoming Express request object
  * @returns {boolean} True if the signature is valid or no secret is set
@@ -26,6 +39,19 @@ const {
 function verifySignature(req) {
   // If no secret is provided, skip verification
   if (!WEBHOOK_SECRET) return true;
+
+  // 1) Bearer token authentication: look for an Authorization header
+  // formatted as "Bearer <token>" and compare the token to WEBHOOK_SECRET.
+  const authHeader = req.headers['authorization'];
+  if (authHeader) {
+    const match = authHeader.match(/^\s*Bearer\s+(.+)$/i);
+    if (match && match[1] === WEBHOOK_SECRET) {
+      return true;
+    }
+  }
+
+  // 2) HMAC signature verification: look for the X-Webhook-Signature header
+  // and compute a base64-encoded HMAC digest of the raw request payload.
   const signatureHeader = req.headers['x-webhook-signature'];
   if (!signatureHeader) return false;
   const payload = JSON.stringify(req.body);
