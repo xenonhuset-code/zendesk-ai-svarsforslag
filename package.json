@@ -1,0 +1,21 @@
+{
+  "name": "zendesk-ai-svarsforslag",
+  "version": "1.0.0",
+  "description": "A simple Express service to generate suggested replies for Zendesk tickets using OpenAI.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "zendesk",
+    "openai",
+    "support",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.4.0",
+    "express": "^4.18.2"
+  }
+}
