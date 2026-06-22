@@ -159,14 +159,25 @@ async function findTicketsNeedingSuggestions() {
 async function processNewTickets() {
   const tickets = await findTicketsNeedingSuggestions();
   const processed = [];
+  const failed = [];
 
   for (const ticket of tickets) {
-    const suggestion = await createAiSuggestion(ticket);
-    await addInternalZendeskComment(ticket.id, suggestion);
-    processed.push(ticket.id);
+    try {
+      const suggestion = await createAiSuggestion(ticket);
+      await addInternalZendeskComment(ticket.id, suggestion);
+      processed.push(ticket.id);
+    } catch (error) {
+      console.error(`Failed to process ticket ${ticket.id}:`, error);
+      failed.push(ticket.id);
+    }
   }
 
-  return processed;
+  return { processed, failed };
+}
+
+function shortError(error) {
+  const message = error?.message || "Unknown error";
+  return message.length > 180 ? `${message.slice(0, 180)}...` : message;
 }
 
 app.get("/poll", async (req, res) => {
@@ -177,11 +188,15 @@ app.get("/poll", async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const processed = await processNewTickets();
-    res.json({ ok: true, processed });
+    const result = await processNewTickets();
+    res.json({
+      ok: true,
+      processed_count: result.processed.length,
+      failed_count: result.failed.length
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ ok: false, error: shortError(error) });
   }
 });
 
@@ -213,7 +228,7 @@ app.get("/retry", async (req, res) => {
     res.json({ ok: true, processed });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ ok: false, error: shortError(error) });
   }
 });
 
@@ -241,7 +256,7 @@ app.post("/zendesk/new-ticket", async (req, res) => {
     res.json({ ok: true, processed: [ticket.id] });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ ok: false, error: shortError(error) });
   }
 });
 
