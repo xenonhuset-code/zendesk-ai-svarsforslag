@@ -15,6 +15,7 @@ const {
 
 const AI_TAG = "ai_svarsforslag_skapat";
 const AI_MARKER = "AI-svarsforslag, granska innan du skickar:";
+let pollIsRunning = false;
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -193,7 +194,6 @@ async function processNewTickets() {
   const processed = [];
   const skipped = [];
   const failed = [];
-
   for (const ticket of tickets) {
     try {
       if (!(await shouldCreateSuggestion(ticket))) {
@@ -218,7 +218,7 @@ function shortError(error) {
   return message.length > 180 ? `${message.slice(0, 180)}...` : message;
 }
 
-app.get("/poll", async (req, res) => {
+app.get("/poll", (req, res) => {
   try {
     requireConfig();
 
@@ -226,16 +226,32 @@ app.get("/poll", async (req, res) => {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
-    const result = await processNewTickets();
-    res.json({
-      ok: true,
-      processed_count: result.processed.length,
-      skipped_count: result.skipped.length,
-      failed_count: result.failed.length
-    });
+    // Answer cron immediately with no response body.
+    res.status(204).send();
+
+    if (pollIsRunning) {
+      console.log("Poll skipped because another poll is still running");
+      return;
+    }
+
+    pollIsRunning = true;
+    processNewTickets()
+      .then((result) => {
+        console.log(
+          `Poll complete: processed=${result.processed.length}, skipped=${result.skipped.length}, failed=${result.failed.length}`
+        );
+      })
+      .catch((error) => {
+        console.error("Poll failed:", error);
+      })
+      .finally(() => {
+        pollIsRunning = false;
+      });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ ok: false, error: shortError(error) });
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: shortError(error) });
+    }
   }
 });
 
@@ -272,5 +288,4 @@ app.get("/retry", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server is listening on port ${PORT}`);
-});
+  console.log(`Server is
