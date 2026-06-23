@@ -1,3 +1,102 @@
+import express from "express";
+
+const app = express();
+app.use(express.json());
+
+const {
+  WEBHOOK_SECRET,
+  ZENDESK_SUBDOMAIN,
+  ZENDESK_EMAIL,
+  ZENDESK_API_TOKEN,
+  OPENAI_API_KEY,
+  OPENAI_MODEL = "gpt-4.1-mini",
+  PORT = 3000
+} = process.env;
+
+const AI_TAG = "ai_svarsforslag_skapat";
+const AI_MARKER = "AI-svarsforslag, granska innan du skickar:";
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
+function checkSecret(req) {
+  const bearerToken = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+  return bearerToken === WEBHOOK_SECRET || req.query.secret === WEBHOOK_SECRET;
+}
+
+function requireConfig() {
+  const missing = [];
+  for (const [name, value] of Object.entries({
+    WEBHOOK_SECRET,
+    ZENDESK_SUBDOMAIN,
+    ZENDESK_EMAIL,
+    ZENDESK_API_TOKEN,
+    OPENAI_API_KEY
+  })) {
+    if (!value) missing.push(name);
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Missing environment variables: ${missing.join(", ")}`);
+  }
+}
+
+function zendeskAuthHeader() {
+  const auth = Buffer.from(`${ZENDESK_EMAIL}/token:${ZENDESK_API_TOKEN}`).toString("base64");
+  return `Basic ${auth}`;
+}
+
+async function zendeskRequest(path, options = {}) {
+  const response = await fetch(`https://${ZENDESK_SUBDOMAIN}.zendesk.com${path}`, {
+    ...options,
+    headers: {
+      Authorization: zendeskAuthHeader(),
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Zendesk error ${response.status}: ${body.slice(0, 500)}`);
+  }
+
+  return response.json();
+}
+
+function extractOpenAiText(data) {
+  if (typeof data.output_text === "string" && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
+
+  const parts = [];
+  for (const item of data.output || []) {
+    for (const content of item.content || []) {
+      if (typeof content.text === "string") parts.push(content.text);
+      if (typeof content.output_text === "string") parts.push(content.output_text);
+    }
+  }
+
+  return parts.join("\n").trim();
+}
+
+async function createAiSuggestion(ticket) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: `Skriv ett svenskt kundservice-svarsforslag.
+
+Viktigt:
+- Detta ar bara ett internt forslag.
+- Svara inte som om nagot ar sakert om information saknas.
+- Var vanlig, tydlig och inte for lang.
+- Kunden ska inte se detta forran en manniska godkant det.
 Arende:
 Rubrik: ${ticket.subject || ""}
 Beskrivning: ${ticket.description || ""}`
