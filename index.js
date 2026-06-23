@@ -98,6 +98,7 @@ Viktigt:
 - Svara inte som om nagot ar sakert om information saknas.
 - Var vanlig, tydlig och inte for lang.
 - Kunden ska inte se detta forran en manniska godkant det.
+
 Arende:
 Rubrik: ${ticket.subject || ""}
 Beskrivning: ${ticket.description || ""}`
@@ -194,6 +195,7 @@ async function processNewTickets() {
   const processed = [];
   const skipped = [];
   const failed = [];
+
   for (const ticket of tickets) {
     try {
       if (!(await shouldCreateSuggestion(ticket))) {
@@ -288,4 +290,5 @@ app.get("/retry", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server is
+  console.log(`Server is listening on port ${PORT}`);
+});
